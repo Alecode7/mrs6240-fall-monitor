@@ -1,0 +1,70 @@
+# Local Python environments and generated caches
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+**/.mplconfig/
+**/.cache/
+**/.cdk/
+*.py[cod]
+*.egg-info/
+
+# Nested repository metadata retained locally during monorepo migration
+**/.git.local-backup/
+
+# Runtime logs, captures, annotations, and personal test material
+/logs/
+/datadealer/
+/fall_capture_station/data/
+/fall_detection/pc_ml/
+/fall_detection/hw_test/results/
+
+# Hardware documents and vendor runtime binaries
+/MRS6240文档类/
+*.dll
+*.exe
+*.zip
+*.7z
+*.rar
+
+# Firmware build products and locally archived images
+*.img
+*.bin
+*.elf
+*.map
+*.asm
+*.hex
+*.o
+*.obj
+*.d
+*.lst
+*.out
+*.log
+/fall_pipeline.obj
+/fall_rule.obj
+/firmware_rule_harness.obj
+
+# The vendor SDK is not redistributed. Only the Falldown application-layer
+# source and its MRS6240-P2512 project descriptors are versioned below.
+/SDK/*
+!/SDK/Software_Kit/
+/SDK/Software_Kit/*
+!/SDK/Software_Kit/02_SDK/
+/SDK/Software_Kit/02_SDK/*
+!/SDK/Software_Kit/02_SDK/psdf_sdk/
+/SDK/Software_Kit/02_SDK/psdf_sdk/*
+!/SDK/Software_Kit/02_SDK/psdf_sdk/project/
+/SDK/Software_Kit/02_SDK/psdf_sdk/project/*
+!/SDK/Software_Kit/02_SDK/psdf_sdk/project/mmwave/
+/SDK/Software_Kit/02_SDK/psdf_sdk/project/mmwave/*
+!/SDK/Software_Kit/02_SDK/psdf_sdk/project/mmwave/mmwave_application/
+/SDK/Software_Kit/02_SDK/psdf_sdk/project/mmwave/mmwave_application/*
+!/SDK/Software_Kit/02_SDK/psdf_sdk/project/mmwave/mmwave_application/Falldown/
+/SDK/Software_Kit/02_SDK/psdf_sdk/project/mmwave/mmwave_application/Falldown/*
+!/SDK/Software_Kit/02_SDK/psdf_sdk/project/mmwave/mmwave_application/Falldown/Falldown.cdkws
+!/SDK/Software_Kit/02_SDK/psdf_sdk/project/mmwave/mmwave_application/Falldown/src/
+!/SDK/Software_Kit/02_SDK/psdf_sdk/project/mmwave/mmwave_application/Falldown/src/*.c
+!/SDK/Software_Kit/02_SDK/psdf_sdk/project/mmwave/mmwave_application/Falldown/src/*.h
+!/SDK/Software_Kit/02_SDK/psdf_sdk/project/mmwave/mmwave_application/Falldown/cdk_6240_cpuf/
+/SDK/Software_Kit/02_SDK/psdf_sdk/project/mmwave/mmwave_application/Falldown/cdk_6240_cpuf/*
+!/SDK/Software_Kit/02_SDK/psdf_sdk/project/mmwave/mmwave_application/Falldown/cdk_6240_cpuf/project.cdkws
+!/SDK/Software_Kit/02_SDK/psdf_sdk/project/mmwave/mmwave_application/Falldown/cdk_6240_cpuf/project.cdkproj

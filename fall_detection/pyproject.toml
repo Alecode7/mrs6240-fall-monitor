@@ -1,0 +1,11 @@
+[project]
+name = "fall-detection"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "matplotlib>=3.10.0",
+    "pyserial>=3.5",
+    "pythonnet>=3.1.0",
+]
