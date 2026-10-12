@@ -2,11 +2,10 @@
 
 > Ceiling-mounted MRS6240-P2512 mmWave fall detection and monitoring system with embedded fall-state logic, persistent deployment configuration, real-time monitoring, audible alerts, and device health checks.
 
-这是一个基于 POSSUMIC MRS6240-P2512 毫米波雷达的跌倒检测工程。项目包含三部分：
+这是一个基于 POSSUMIC MRS6240-P2512 毫米波雷达的跌倒检测工程。项目包含两部分：
 
 - **板端固件**：接收运动点云与存在点云，在雷达板上完成单目标跟踪和跌倒状态机判断。
 - **实时跌倒状态上位机**：读取板端串口状态/事件，读取 SPI/HIF 点云做可视化、健康检查、日志与事件留证；不在 PC 端重新判定是否跌倒。
-- **采集、标注、回放工具**：用于同步采集相机、点云与串口日志，人工标注并离线回归算法。
 
 > 本项目当前的算法阈值和测试结果仅针对已有安装方式、房间环境和受试动作验证，不等同于医疗器械认证或对所有人员、场地的安全保证。二次部署前必须重新做场地标定和回归测试。
 
@@ -35,10 +34,11 @@
   │
   └──────────── SPI/HIF（CH347，默认 index=0）──────────────> 原始点云可视化
 
-采集上位机 ── 同步保存 相机 + 点云 + 串口 ──> 标注上位机 / 离线回放 / 回归测试
 ```
 
 核心原则：**“是否跌倒”以板端串口输出的 `FALL_EVENT` 为准**。PC 端显示的点云、目标框和折线图用于观测、排障、留证，不会覆盖板端判断结果。
+
+核心算法说明见 [docs/ALGORITHM.md](docs/ALGORITHM.md)。其中明确列出了点云处理链路、候选/疑似/确认/恢复状态机，以及当前工程的关键阈值和适用边界。
 
 ## 2. 当前运行基线
 
@@ -69,28 +69,22 @@ FALL_CFG alg=3 mount_h=... pitch=... roi_x=... roi_y=... roi_z=...
 
 ```text
 .
-├─ fall_detection/                 实时状态上位机、离线分析、回放和测试
+├─ fall_detection/                 实时状态上位机、辅助分析与测试
 │  ├─ serial_event_live_visualizer.py  实时跌倒状态上位机主程序
 │  ├─ serial_event.py                   FALL / FALL_EVENT 协议解析
 │  ├─ device_source.py                  SDK HIF 数据源适配
 │  ├─ tracking.py                       PC 端点云聚类与跟踪（用于显示/离线分析）
-│  ├─ rule_detector.py                  PC 离线规则回放，不是实时告警依据
-│  ├─ recording_replay.py               采集 session 回放
-│  ├─ visualize_datadealer.py           离线点云可视化
-│  ├─ analyze_datadealer.py             离线数据摘要分析
+│  ├─ rule_detector.py                  PC 离线规则辅助验证，不是实时告警依据
+│  ├─ live_visualizer.py                实时点云与目标可视化辅助模块
 │  └─ tests/                            上位机单元测试
-├─ fall_capture_station/            采集和人工标注上位机
-│  ├─ capture_app.py                    相机/点云/串口同步采集
-│  ├─ annotation_app.py                 回放和人工标注
-│  └─ data/<session>/                   每次采集会话输出目录
+├─ docs/ALGORITHM.md                板端判断策略与状态机说明
 ├─ datadealer/                      本地历史点云数据及处理数据（不公开）
 ├─ logs/                            本地实时运行日志和事件留证（不公开）
 │  └─ realtime_fall/<时间戳>/evidence/ 事件 JSON 与时间线 PNG
 ├─ SDK/                             本地供应商 SDK；公开仓库仅保留 Falldown 应用层源码
 ├─ MRS6240文档类/                   本地原始硬件/协议文档（不公开）
 ├─ 启动实时跌倒状态上位机.ps1
-├─ 启动采集上位机.ps1
-└─ 启动标注上位机.ps1
+└─ 启动简化跌倒监护界面.ps1
 ```
 
 本地开发环境中，固件 CDK 工程位于：
@@ -125,11 +119,9 @@ cdk_6240_cpuf\output\mrs6240_p2512.img 当前工程生成的烧录镜像
 
 串口可以单独连接并观察板端事件；SPI 点云可视化不负责替代板端告警。实时上位机使用两个通道时，串口和 SPI 都应连接。
 
-### 4.2 排他性规则
+### 4.2 资源占用规则
 
-同一时刻，**采集上位机和实时跌倒状态上位机不能同时打开同一个 SPI/HIF 数据口**。需要录制数据时先关闭实时点云连接，再打开采集上位机；需要实时监控时关闭采集程序后再连接实时上位机。
-
-控制串口也不应被多个串口终端同时占用。
+同一时刻只能有一个程序占用 SPI/HIF 数据口，控制串口也不应被多个串口终端同时打开。关闭厂商调试工具或其他 HIF 客户端后，再连接实时上位机。
 
 ## 5. 快速开始
 
@@ -149,7 +141,7 @@ cdk_6240_cpuf\output\mrs6240_p2512.img 当前工程生成的烧录镜像
 根目录脚本固定使用：
 
 ```text
-fall_capture_station\.venv\Scripts\python.exe
+fall_detection\.venv\Scripts\python.exe
 fall_detection\serial_event_live_visualizer.py
 ```
 
@@ -160,7 +152,7 @@ fall_detection\serial_event_live_visualizer.py
 在项目根目录执行：
 
 ```powershell
-fall_capture_station\.venv\Scripts\python.exe `
+fall_detection\.venv\Scripts\python.exe `
   .\fall_detection\serial_event_live_visualizer.py `
   --source device --spi-index 0 --spi-freq-mode 0 `
   --serial-port COM3 --serial-baud 115200
@@ -170,7 +162,7 @@ fall_capture_station\.venv\Scripts\python.exe `
 
 | 参数 | 说明 |
 | --- | --- |
-| `--source device` | 连接真实硬件；`replay` 为回放采集 session |
+| `--source device` | 连接真实硬件 |
 | `--serial-port COM3` | 控制口及日志口 |
 | `--serial-baud 115200` | 控制口波特率 |
 | `--spi-index 0` | CH347 SPI 设备索引 |
@@ -199,45 +191,6 @@ mmwc start
 
 不要把“设置高度”理解为完整安装标定：俯角、ROI、坐标转换和算法阈值仍取决于当前烧录镜像的编译配置。当前本地 `SDK` 内工程已经保留高度持久化实现，修改或重编译时不要切换到外部的历史 CDK 副本。
 
-### 5.4 采集、标注与回放
-
-采集：
-
-```powershell
-.\启动采集上位机.ps1
-```
-
-标注：
-
-```powershell
-.\启动标注上位机.ps1
-```
-
-实时状态上位机回放一次已采集 session：
-
-```powershell
-fall_capture_station\.venv\Scripts\python.exe `
-  .\fall_detection\serial_event_live_visualizer.py `
-  --source replay `
-  --session-dir .\fall_capture_station\data\<session_name> `
-  --replay-speed 1.0
-```
-
-采集 session 主要文件：
-
-```text
-session.json                         本次采集配置和时间基准
-camera.mp4                           相机录像
-camera_frames.csv                    相机帧时间信息
-<session>_motion_point_cloud.csv     运动点云
-<session>_presence_point_cloud.csv   存在/静态点云
-radar_events.jsonl                   雷达帧与事件记录
-serial_control.log                   原始串口收发日志
-operator_marks.csv                   人工标签
-```
-
-`relative_ms` 是相机与雷达对齐的主时间轴；需要追溯板端原始帧时使用 `frame_index` / `source_radar_frame_index`。
-
 ## 6. PC 环境准备
 
 ### 6.1 软件与驱动
@@ -258,17 +211,16 @@ pyserial         控制串口
 pythonnet        调用 HIF .NET DLL
 numpy            点云和曲线数据
 matplotlib       点云/时间线绘图
-opencv-python    相机采集（采集上位机）
 pytest           上位机测试
 ```
 
 示例（仅在需要重建环境时执行）：
 
 ```powershell
-py -3 -m venv fall_capture_station\.venv
-.\fall_capture_station\.venv\Scripts\Activate.ps1
+py -3 -m venv fall_detection\.venv
+.\fall_detection\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install pyserial pythonnet numpy matplotlib opencv-python pytest
+python -m pip install pyserial pythonnet numpy matplotlib pytest
 ```
 
 安装依赖后，应先启动实时上位机验证 DLL 与 CH347 数据口，而不是直接假定 Python 环境可用。
@@ -491,11 +443,11 @@ SHA256：889B716370EDD64D5DFB27B2750FAB0876361E2D050A0387B342179D1030348C
 
 ```powershell
 # 分析 datadealer 数据
-fall_capture_station\.venv\Scripts\python.exe `
+fall_detection\.venv\Scripts\python.exe `
   -m fall_detection.analyze_datadealer --data-dir .\datadealer\data
 
 # 点云可视化
-fall_capture_station\.venv\Scripts\python.exe `
+fall_detection\.venv\Scripts\python.exe `
   -m fall_detection.visualize_datadealer --data-dir .\datadealer\data
 ```
 
@@ -517,7 +469,7 @@ D:\Anaconda\anaconda\python.exe -m pytest -q `
   fall_detection\tests\test_serial_event_live_visualizer.py
 ```
 
-已验证的这组上位机测试为 `32 passed`。完整测试集还可能受 PC ML 历史依赖的 NumPy/SciPy ABI 差异或历史回放数据缺失影响；遇到此类问题时应单独修复环境/数据，不要把它误判为实时板端算法失效。
+已验证的实时协议与监护界面测试为 `42 passed`。本项目的实时告警依据始终是板端 `FALL_EVENT`，不要把点云展示或历史离线数据问题误判为板端状态机失效。
 
 建议把每次物理测试按下表记录：
 
@@ -528,14 +480,14 @@ D:\Anaconda\anaconda\python.exe -m pytest -q `
 | 正常样本 | 站立、走动、蹲下、弯腰、坐下、趴姿等是否误触发 |
 | 跌倒样本 | 前/后/侧向、原地/横移、躺姿/趴姿、是否疑似/确认/恢复 |
 | 健康指标 | 串口中断、点云超时、`track` 中断、`overflow` 变化 |
-| 证据 | 实时日志、事件 JSON/PNG、采集 session、人工标注 |
+| 证据 | 实时日志、事件 JSON/PNG、固件版本与安装参数 |
 
 ## 13. 常见排障
 
 | 现象 | 优先检查 |
 | --- | --- |
 | 上位机无法打开 | 虚拟环境中的 Python 是否存在；是否有其他程序占用 COM3 或 SPI；查看启动脚本报错 |
-| 只有串口、没有点云 | CH347 驱动、SPI index/freqMode、SDK DLL、采集上位机是否仍占用 SPI |
+| 只有串口、没有点云 | CH347 驱动、SPI index/freqMode、SDK DLL、其他 HIF 客户端是否仍占用 SPI |
 | 只有点云、没有状态/报警 | COM 号、115200 波特率、控制串口是否被终端占用、固件是否输出 `FALL` |
 | 连接后没有启动日志 | 很可能先上电启动、后连接串口，启动日志已错过；观察后续 `FALL` 状态帧即可，必要时重启板子 |
 | `overflow` 不为零或增长 | 查看 `raw`、`clusters`、ROI/SNR、最大点数和日志是否出现异常；不要先忽略该指标 |
@@ -555,7 +507,7 @@ D:\Anaconda\anaconda\python.exe -m pytest -q `
 ## 15. 参考入口
 
 - 实时状态上位机说明：[fall_detection/README.md](fall_detection/README.md)
-- 采集与标注说明：[fall_capture_station/README.md](fall_capture_station/README.md)
+- 板端判断策略：[docs/ALGORITHM.md](docs/ALGORITHM.md)
 - 厂商 SDK 与文档：`SDK/`、`MRS6240文档类/`
 - 真实运行日志：`logs/realtime_fall/`
 

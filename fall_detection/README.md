@@ -3,7 +3,9 @@ uv run .\visualize_datadealer.py --data-dir ..\SDK\Software_Kit\05_Data --stem d
 
 uv run .\live_visualizer.py --source replay --data-dir ..\SDK\Software_Kit\05_Data --stem dun2026-07-07-17-43-12 --interval-ms 50 --poll-ms 5 --draw-3d-every 1 --draw-timeline-every 10
 
-# MRS6240 跌倒检测离线验证模块
+# MRS6240 实时监护上位机
+
+> 公开版本聚焦实时监护与板端状态机验证，不包含采集/标注上位机、相机视频、点云会话或人工标注数据。跌倒判断策略以 [../docs/ALGORITHM.md](../docs/ALGORITHM.md) 为准。
 
 本目录用于把 `MRS6240-P2512/datadealer/data` 或 `MRS6240-P2512/SDK/Software_Kit/05_Data` 里的点云 CSV 先离线跑通，再把同一套算法接回实时上位机。
 

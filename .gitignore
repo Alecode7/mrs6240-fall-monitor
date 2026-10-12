@@ -14,9 +14,13 @@
 # Runtime logs, captures, annotations, and personal test material
 /logs/
 /datadealer/
-/fall_capture_station/data/
+/fall_capture_station/
+/启动采集上位机.ps1
+/启动标注上位机.ps1
 /fall_detection/pc_ml/
 /fall_detection/hw_test/results/
+/fall_detection/tests/test_capture_station_recorder.py
+/fall_detection/DataCollection_demo.py
 
 # Hardware documents and vendor runtime binaries
 /MRS6240文档类/

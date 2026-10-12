@@ -1,5 +1,5 @@
 $projectRoot = $PSScriptRoot
-$python = Join-Path $projectRoot "fall_capture_station\.venv\Scripts\python.exe"
+$python = Join-Path $projectRoot "fall_detection\.venv\Scripts\python.exe"
 $app = Join-Path $projectRoot "fall_detection\serial_event_live_visualizer.py"
 $env:MPLCONFIGDIR = Join-Path $projectRoot ".mplconfig"
 
