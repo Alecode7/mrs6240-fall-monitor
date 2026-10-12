@@ -1,5 +1,7 @@
 # MRS6240-P2512 跌倒检测项目
 
+> Ceiling-mounted MRS6240-P2512 mmWave fall detection and monitoring system with embedded fall-state logic, persistent deployment configuration, real-time monitoring, audible alerts, and device health checks.
+
 这是一个基于 POSSUMIC MRS6240-P2512 毫米波雷达的跌倒检测工程。项目包含三部分：
 
 - **板端固件**：接收运动点云与存在点云，在雷达板上完成单目标跟踪和跌倒状态机判断。
