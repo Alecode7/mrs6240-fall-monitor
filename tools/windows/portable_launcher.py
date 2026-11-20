@@ -1,6 +1,6 @@
-"""Entry point shared by the two Windows portable executables.
+"""两个 Windows 便携版 EXE 共用的启动入口。
 
-Self-tests deliberately never open a serial port or start SPI collection.
+自检不打开串口，也不启动 SPI 数据采集。
 """
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ def self_test(path: Path) -> int:
 def launch() -> int:
     app_dir = application_directory()
     os.environ["MPLCONFIGDIR"] = str(app_dir / "logs" / ".matplotlib")
-    # The frozen application ships pythonnet for the Windows .NET Framework.
+    # 打包程序使用 pythonnet 加载 Windows .NET Framework 运行时。
     os.environ["PYTHONNET_RUNTIME"] = "netfx"
     if "--self-test" in sys.argv:
         index = sys.argv.index("--self-test")

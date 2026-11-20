@@ -1,4 +1,4 @@
-# Local build only: vendor DLLs and portable output stay excluded from Git.
+# 仅用于本地构建；厂商 DLL 和便携版产物继续被 Git 忽略。
 import os
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
@@ -8,7 +8,7 @@ hif = Path(os.environ.get("MRS6240_HIF_DLL", str(root / "SDK/Software_Kit/03_Too
 native = Path(os.environ.get("MRS6240_CH347_DLL", str(Path(os.environ["WINDIR"]) / "System32/CH347DLLA64.dll")))
 for dependency in (hif, native):
     if not dependency.is_file():
-        raise FileNotFoundError(f"Required hardware dependency is missing: {dependency}")
+        raise FileNotFoundError(f"缺少必需的硬件运行库：{dependency}")
 
 a = Analysis(
     [str(root / "tools/windows/portable_launcher.py")],

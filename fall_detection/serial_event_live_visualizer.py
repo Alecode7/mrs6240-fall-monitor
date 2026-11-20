@@ -493,9 +493,9 @@ class SerialEventLiveVisualizerApp:
     ):
         self.root = root
         if ui_mode not in {"engineering", "monitor"}:
-            raise ValueError(f"unsupported ui mode: {ui_mode}")
+            raise ValueError(f"不支持的界面模式：{ui_mode}")
         if ui_mode == "monitor" and source_mode != "device":
-            raise ValueError("monitor UI only supports device mode")
+            raise ValueError("简化监护界面只支持真实设备模式（device）")
         self.ui_mode = ui_mode
         self.root.title("MRS6240 跌倒监护" if ui_mode == "monitor" else "MRS6240 实时点云 / 串口事件监视器")
         self.root.geometry("1000x660" if ui_mode == "monitor" else "1280x940")
@@ -505,7 +505,7 @@ class SerialEventLiveVisualizerApp:
             self.root.minsize(1000, 760)
         self.device_config = device_config
         if source_mode not in {"device", "replay"}:
-            raise ValueError(f"unsupported source mode: {source_mode}")
+            raise ValueError(f"不支持的数据源模式：{source_mode}")
         self.source_mode = source_mode
         self.session_dir = Path(session_dir).expanduser() if session_dir else None
         self.replay_speed = float(replay_speed)
@@ -2030,54 +2030,54 @@ class SerialEventLiveVisualizerApp:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Display MRS6240 raw point clouds and board serial fall events.")
+    parser = argparse.ArgumentParser(description="显示 MRS6240 原始点云和板端串口跌倒事件。")
     parser.add_argument(
         "--source",
         choices=("device", "replay"),
         default="device",
-        help="point/log source: device hardware or a captured session directory",
+        help="点云和日志来源：device 连接雷达，replay 回放录制会话",
     )
-    parser.add_argument("--session-dir", default=None, help="capture-station session directory used by replay mode")
-    parser.add_argument("--replay-speed", type=float, default=1.0, help="recorded-session playback speed")
-    parser.add_argument("--replay-loop", action="store_true", help="loop the recorded session until stopped")
-    parser.add_argument("--spi-index", type=int, default=0, help="CH347 SPI device index")
-    parser.add_argument("--spi-freq-mode", type=int, default=0, help="CH347 SPI frequency mode")
-    parser.add_argument("--serial-port", default="COM3", help="board control/log serial port")
-    parser.add_argument("--serial-baud", type=int, default=115200, help="board control/log serial baud rate")
+    parser.add_argument("--session-dir", default=None, help="回放模式使用的录制会话目录")
+    parser.add_argument("--replay-speed", type=float, default=1.0, help="录制会话的回放速度倍数")
+    parser.add_argument("--replay-loop", action="store_true", help="循环回放录制会话，直到手动停止")
+    parser.add_argument("--spi-index", type=int, default=0, help="CH347 SPI 设备索引")
+    parser.add_argument("--spi-freq-mode", type=int, default=0, help="CH347 SPI 频率模式")
+    parser.add_argument("--serial-port", default="COM3", help="板端控制和日志串口号")
+    parser.add_argument("--serial-baud", type=int, default=115200, help="板端控制和日志串口波特率")
     parser.add_argument(
         "--ui-mode",
         choices=("engineering", "monitor"),
         default="engineering",
-        help="engineering shows point-cloud diagnostics; monitor shows the simplified operator UI",
+        help="界面模式：engineering 为工程调试界面，monitor 为简化监护界面",
     )
-    parser.add_argument("--device-transport", choices=("spi", "uart"), default="spi", help="point-cloud transport")
-    parser.add_argument("--point-uart-com", default="COM13", help="point-cloud UART when --device-transport uart")
-    parser.add_argument("--point-uart-baud", default="1000000", help="point-cloud UART baud rate")
-    parser.add_argument("--dll-path", default=None, help="optional HifMsgDataCollectionLib.dll path")
-    parser.add_argument("--poll-ms", type=int, default=20, help="GUI queue polling interval")
-    parser.add_argument("--history-frames", type=int, default=600, help="raw frames kept for the timeline")
+    parser.add_argument("--device-transport", choices=("spi", "uart"), default="spi", help="点云数据传输方式")
+    parser.add_argument("--point-uart-com", default="COM13", help="选择 uart 传输时使用的点云串口号")
+    parser.add_argument("--point-uart-baud", default="1000000", help="点云串口波特率")
+    parser.add_argument("--dll-path", default=None, help="可选：指定 HifMsgDataCollectionLib.dll 路径")
+    parser.add_argument("--poll-ms", type=int, default=20, help="界面消息队列轮询间隔，单位毫秒")
+    parser.add_argument("--history-frames", type=int, default=600, help="时间线保留的原始帧数")
     parser.add_argument(
         "--session-log-dir",
         default=str(DEFAULT_SESSION_LOG_DIR),
-        help="directory for automatically saved realtime serial logs",
+        help="实时串口日志的自动保存目录",
     )
-    parser.add_argument("--x-min", type=float, default=-2.5, help="XY plot minimum X")
-    parser.add_argument("--x-max", type=float, default=2.5, help="XY plot maximum X")
-    parser.add_argument("--y-min", type=float, default=-2.5, help="XY plot minimum Y")
-    parser.add_argument("--y-max", type=float, default=2.5, help="XY plot maximum Y")
-    parser.add_argument("--z-min", type=float, default=-1.0, help="XZ/YZ projection minimum Z")
-    parser.add_argument("--z-max", type=float, default=2.5, help="XZ/YZ projection maximum Z")
+    parser.add_argument("--x-min", type=float, default=-2.5, help="XY 图 X 轴下限，单位米")
+    parser.add_argument("--x-max", type=float, default=2.5, help="XY 图 X 轴上限，单位米")
+    parser.add_argument("--y-min", type=float, default=-2.5, help="XY 图 Y 轴下限，单位米")
+    parser.add_argument("--y-max", type=float, default=2.5, help="XY 图 Y 轴上限，单位米")
+    parser.add_argument("--z-min", type=float, default=-1.0, help="XZ/YZ 图高度下限，单位米")
+    parser.add_argument("--z-max", type=float, default=2.5, help="XZ/YZ 图高度上限，单位米")
     parser.add_argument(
         "--yz-rotation-deg",
         type=float,
         default=DEFAULT_POINT_YZ_ROTATION_DEG,
-        help="rotate raw point-cloud Y/Z into world coordinates (90=ceiling-down installation)",
+        help="将原始点云 Y/Z 坐标旋转到世界坐标；顶装垂直向下时填 90 度",
     )
     parser.add_argument(
         "--mount-height-m",
         type=float,
         default=DEFAULT_POINT_MOUNT_HEIGHT_M,
-        help="radar installation height used for point-cloud display, in meters",
+        help="点云显示使用的雷达安装高度，单位米",
     )
     return parser.parse_args()
 

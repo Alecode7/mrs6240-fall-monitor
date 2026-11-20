@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$Python,
     [string]$HifDll,
     [string]$Ch347Dll
@@ -8,16 +8,16 @@ $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $buildTag = Get-Date -Format "yyyyMMdd-HHmmss"
 if (-not $Python) { $Python = Join-Path $projectRoot ".build\portable-env\Scripts\python.exe" }
 if (-not (Test-Path -LiteralPath $Python)) {
-    throw "Create the build environment first: py -3.12 -m venv .build\portable-env"
+    throw "请先创建构建环境：py -3.12 -m venv .build\portable-env"
 }
 & $Python -m pip install --disable-pip-version-check -r (Join-Path $PSScriptRoot "requirements-build.txt")
-if ($LASTEXITCODE -ne 0) { throw "Build dependency installation failed." }
+if ($LASTEXITCODE -ne 0) { throw "安装构建依赖失败，请检查上方安装日志。" }
 if ($HifDll) { $env:MRS6240_HIF_DLL = (Resolve-Path -LiteralPath $HifDll).Path }
 if ($Ch347Dll) { $env:MRS6240_CH347_DLL = (Resolve-Path -LiteralPath $Ch347Dll).Path }
 $releaseRoot = Join-Path $projectRoot "releases\$buildTag"
 $workRoot = Join-Path $projectRoot ".build\pyinstaller\$buildTag"
 & $Python -m PyInstaller --noconfirm --distpath $releaseRoot --workpath $workRoot (Join-Path $PSScriptRoot "portable.spec")
-if ($LASTEXITCODE -ne 0) { throw "EXE packaging failed. See PyInstaller output." }
+if ($LASTEXITCODE -ne 0) { throw "EXE 打包失败，请检查上方 PyInstaller 输出。" }
 $package = Join-Path $releaseRoot "MRS6240-Fall-Monitor"
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "USER_GUIDE.txt") -Destination $package
 $drivers = New-Item -ItemType Directory -Path (Join-Path $package "drivers")
@@ -34,4 +34,4 @@ $manifest = [ordered]@{ built_at = (Get-Date -Format "o"); source_commit = $comm
     source_has_local_changes = [bool](& git -C $projectRoot status --porcelain);
     platform = "Windows x64"; dependencies = $dependencies; files = $hashes }
 $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $package "build-manifest.json") -Encoding utf8
-Write-Output "Portable application folder: $package"
+Write-Output "便携版程序文件夹：$package"

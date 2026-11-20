@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$Package)
+﻿param([Parameter(Mandatory=$true)][string]$Package)
 $ErrorActionPreference = "Stop"
 $packagePath = (Resolve-Path -LiteralPath $Package).Path
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
@@ -14,21 +14,21 @@ function Invoke-Check([string]$Executable, [string]$Switch, [string]$ReportName)
         -WorkingDirectory $copiedPackage -WindowStyle Hidden -PassThru
     if (-not $process.WaitForExit(30000)) {
         Stop-Process -Id $process.Id
-        throw "Executable did not finish within 30 seconds: $Executable $Switch"
+        throw "程序在 30 秒内未完成验证：$Executable $Switch"
     }
-    if (-not (Test-Path -LiteralPath $report)) { throw "Missing verification report: $report" }
+    if (-not (Test-Path -LiteralPath $report)) { throw "未生成验证报告：$report" }
     $result = Get-Content -LiteralPath $report -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($process.ExitCode -ne 0 -or -not $result.passed) {
-        throw "Verification failed: $report"
+        throw "验证失败，请查看报告：$report"
     }
-    Write-Output "PASS: $Executable $Switch -> $report"
+    Write-Output "验证通过：$Executable $Switch，报告：$report"
 }
 
 $previousPath = $env:PATH
 $previousPythonPath = $env:PYTHONPATH
 $previousPythonHome = $env:PYTHONHOME
 try {
-    # Verify that neither a Python installation nor a source checkout is on PATH.
+    # 清除 Python 相关环境路径，验证便携版可以独立于开发环境运行。
     $env:PATH = "$env:WINDIR\System32;$env:WINDIR"
     $env:PYTHONPATH = ""
     $env:PYTHONHOME = ""
@@ -40,4 +40,4 @@ try {
     $env:PYTHONPATH = $previousPythonPath
     $env:PYTHONHOME = $previousPythonHome
 }
-Write-Output "Verified portable copy: $copiedPackage"
+Write-Output "便携版复制验证通过，验证副本：$copiedPackage"
