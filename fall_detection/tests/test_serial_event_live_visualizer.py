@@ -19,6 +19,7 @@ from fall_detection.serial_event_live_visualizer import (
     FALL_CONFIG_COMMAND,
     FallAlarmSound,
     POINT_DATA_STALE_AFTER_S,
+    POINT_DIAGNOSTIC_INTERVAL_S,
     POINT_RECONNECT_DELAY_MS,
     PlotBounds,
     SerialEventLiveVisualizerApp,
@@ -381,6 +382,57 @@ class SerialEventLiveVisualizerTests(unittest.TestCase):
         self.assertEqual(state, "healthy")
         self.assertEqual(app.point_status_var.value, "点云已连接")
         self.assertIn("正常", app.point_health_var.value)
+
+    def test_point_diagnostics_include_frame_transfer_and_callback_error_counters(self):
+        app = object.__new__(SerialEventLiveVisualizerApp)
+        app.point_source = SimpleNamespace(
+            is_running=True,
+            callback_error_count=2,
+            last_callback_error="RuntimeError: convert failed",
+        )
+        app.point_buffer = LatestFrameBuffer()
+        app.point_buffer.publish(point_frame(18))
+        app.current_view = raw_view_from_frame(point_frame(18))
+        app.point_last_frame_at_monotonic = 99.0
+        app._last_point_diagnostic_frame_index = 10
+
+        with patch("fall_detection.serial_event_live_visualizer.time.monotonic", return_value=100.0):
+            text = SerialEventLiveVisualizerApp._point_diagnostic_text(app)
+
+        self.assertIn("frame=18", text)
+        self.assertIn("frame_delta=8", text)
+        self.assertIn("published=1", text)
+        self.assertIn("consumed=0", text)
+        self.assertIn("backlog=1", text)
+        self.assertIn("callback_errors=2", text)
+        self.assertIn("last_error=RuntimeError: convert failed", text)
+        self.assertIn("age_s=1.0", text)
+
+    def test_point_diagnostics_are_throttled_and_can_be_forced_for_stale_events(self):
+        app = object.__new__(SerialEventLiveVisualizerApp)
+        app._closed = False
+        app.source_mode = "device"
+        app.point_source = SimpleNamespace(is_running=True)
+        app.point_buffer = LatestFrameBuffer()
+        app.current_view = None
+        app.point_last_frame_at_monotonic = None
+        app._last_point_diagnostics_at_monotonic = 100.0
+        app._last_point_diagnostic_frame_index = None
+        notes = []
+        app._write_session_note = notes.append
+
+        with patch("fall_detection.serial_event_live_visualizer.time.monotonic", return_value=100.0 + POINT_DIAGNOSTIC_INTERVAL_S - 0.1):
+            SerialEventLiveVisualizerApp._maybe_write_point_diagnostics(app)
+        self.assertEqual(notes, [])
+
+        with patch("fall_detection.serial_event_live_visualizer.time.monotonic", return_value=100.0 + POINT_DIAGNOSTIC_INTERVAL_S):
+            SerialEventLiveVisualizerApp._maybe_write_point_diagnostics(app)
+        self.assertEqual(len(notes), 1)
+        self.assertIn("点云诊断", notes[0])
+
+        with patch("fall_detection.serial_event_live_visualizer.time.monotonic", return_value=100.0 + POINT_DIAGNOSTIC_INTERVAL_S + 0.1):
+            SerialEventLiveVisualizerApp._maybe_write_point_diagnostics(app, force=True)
+        self.assertEqual(len(notes), 2)
 
     def test_point_auto_reconnect_schedules_only_in_device_mode(self):
         app = object.__new__(SerialEventLiveVisualizerApp)

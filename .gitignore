@@ -7,6 +7,8 @@
 **/.cdk/
 *.py[cod]
 *.egg-info/
+/.build/
+/releases/
 
 # Nested repository metadata retained locally during monorepo migration
 **/.git.local-backup/
@@ -72,3 +74,8 @@
 /SDK/Software_Kit/02_SDK/psdf_sdk/project/mmwave/mmwave_application/Falldown/cdk_6240_cpuf/*
 !/SDK/Software_Kit/02_SDK/psdf_sdk/project/mmwave/mmwave_application/Falldown/cdk_6240_cpuf/project.cdkws
 !/SDK/Software_Kit/02_SDK/psdf_sdk/project/mmwave/mmwave_application/Falldown/cdk_6240_cpuf/project.cdkproj
+# Local handover/scratch artifacts that are not part of the public monitor
+/tmp/
+/tmp_*.py
+/docs/HANDOVER_*.md
+/tools/handover/

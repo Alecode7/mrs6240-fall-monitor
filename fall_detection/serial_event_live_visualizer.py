@@ -30,6 +30,7 @@ if __package__ in {None, ""}:
     from fall_detection.raw_visualization import RawFrameHistory, RawFrameView, RawTimeline, raw_view_from_frame
     from fall_detection.recording_replay import RecordedSessionReplay, load_recorded_session
     from fall_detection.serial_event import BoardFrameStatus, FallSerialEvent, SerialLogReader, SerialRecord
+    from fall_detection.runtime_paths import default_log_directory
 else:
     from .datadealer_loader import Point3D
     from .device_source import HifDeviceConfig, HifDevicePointCloudSource
@@ -39,17 +40,19 @@ else:
     from .raw_visualization import RawFrameHistory, RawFrameView, RawTimeline, raw_view_from_frame
     from .recording_replay import RecordedSessionReplay, load_recorded_session
     from .serial_event import BoardFrameStatus, FallSerialEvent, SerialLogReader, SerialRecord
+    from .runtime_paths import default_log_directory
 
 
 configure_chinese_matplotlib_font()
 
-DEFAULT_SESSION_LOG_DIR = Path(__file__).resolve().parents[1] / "logs" / "realtime_fall"
+DEFAULT_SESSION_LOG_DIR = default_log_directory()
 RADAR_START_COMMAND = "mmwc start"
 RADAR_STOP_COMMAND = "mmwc stop"
 FALL_CONFIG_COMMAND = "fall_config"
 SERIAL_RECONNECT_DELAY_MS = 3000
 POINT_RECONNECT_DELAY_MS = 3000
 POINT_DATA_STALE_AFTER_S = 3.0
+POINT_DIAGNOSTIC_INTERVAL_S = 10.0
 BOARD_STATUS_STALE_AFTER_S = 3.0
 TARGET_ASSOCIATION_RADIUS_M = 0.60
 TARGET_ASSOCIATION_ALIGNED_M = 0.35
@@ -526,6 +529,8 @@ class SerialEventLiveVisualizerApp:
         self.event_evidence_after_ids: set[str] = set()
         self.point_source_started_at_monotonic: float | None = None
         self.point_last_frame_at_monotonic: float | None = None
+        self._last_point_diagnostics_at_monotonic: float | None = None
+        self._last_point_diagnostic_frame_index: int | None = None
         self.point_health_state = "disconnected"
         self.deployment_check_requested = False
         self.history = RawFrameHistory(max_frames=history_frames)
@@ -986,6 +991,8 @@ class SerialEventLiveVisualizerApp:
         self._cancel_point_reconnect()
         self.point_source_started_at_monotonic = time.monotonic()
         self.point_last_frame_at_monotonic = None
+        self._last_point_diagnostics_at_monotonic = None
+        self._last_point_diagnostic_frame_index = None
         self.point_health_state = "waiting"
         self.point_status_var.set("点云已连接")
         self.point_health_var.set("数据：等待首帧")
@@ -1246,7 +1253,11 @@ class SerialEventLiveVisualizerApp:
                 )
                 self.history.append(raw_view_from_frame(display_frame))
             self.current_view = self.history.views[-1]
+        previous_point_health = getattr(self, "point_health_state", None)
         point_health = self._update_point_health()
+        self._maybe_write_point_diagnostics(
+            force=point_health == "stale" and previous_point_health != "stale"
+        )
         if pending:
             if self._point_tab_is_visible():
                 self._draw_current_frame()
@@ -1266,6 +1277,64 @@ class SerialEventLiveVisualizerApp:
         elif self.source_mode == "device":
             self._update_point_health()
             self._schedule_point_reconnect()
+
+    def _point_diagnostic_text(self) -> str:
+        source = self.point_source
+        if source is None:
+            return ""
+        parts: list[str] = []
+        current_frame = getattr(self, "current_view", None)
+        frame = getattr(current_frame, "frame", None)
+        frame_index = getattr(frame, "frame_index", None)
+        if frame_index is None:
+            parts.append("frame=--")
+        else:
+            parts.append(f"frame={frame_index}")
+            previous_index = getattr(self, "_last_point_diagnostic_frame_index", None)
+            if previous_index is not None:
+                parts.append(f"frame_delta={frame_index - previous_index}")
+
+        buffer = getattr(self, "point_buffer", None)
+        stats = live_source_stats(source, buffer) if buffer is not None else None
+        if stats is not None:
+            parts.append(f"running={int(stats.is_running)}")
+            parts.append(f"published={stats.published_count}")
+            parts.append(f"consumed={stats.consumed_count}")
+            parts.append(f"backlog={max(stats.published_count - stats.consumed_count, 0)}")
+
+        callback_error_count = getattr(source, "callback_error_count", None)
+        if callback_error_count is not None:
+            parts.append(f"callback_errors={callback_error_count}")
+            last_callback_error = getattr(source, "last_callback_error", None)
+            if last_callback_error:
+                parts.append(f"last_error={last_callback_error}")
+
+        last_frame_at = getattr(self, "point_last_frame_at_monotonic", None)
+        if last_frame_at is not None:
+            parts.append(f"age_s={max(time.monotonic() - last_frame_at, 0.0):.1f}")
+        return "点云诊断 " + " ".join(parts)
+
+    def _maybe_write_point_diagnostics(self, *, force: bool = False) -> None:
+        if getattr(self, "_closed", False) or getattr(self, "source_mode", None) != "device":
+            return
+        if getattr(self, "point_source", None) is None:
+            return
+        write_note = getattr(self, "_write_session_note", None)
+        if write_note is None:
+            return
+
+        now = time.monotonic()
+        last_at = getattr(self, "_last_point_diagnostics_at_monotonic", None)
+        if not force and (last_at is None or now - last_at < POINT_DIAGNOSTIC_INTERVAL_S):
+            return
+        text = self._point_diagnostic_text()
+        if not text:
+            return
+        write_note(text)
+        self._last_point_diagnostics_at_monotonic = now
+        current_frame = getattr(self, "current_view", None)
+        frame_index = getattr(getattr(current_frame, "frame", None), "frame_index", None)
+        self._last_point_diagnostic_frame_index = frame_index if isinstance(frame_index, int) else None
 
     def _draw_current_frame(self, *, force_timeline: bool = False) -> None:
         self._draw_xy()

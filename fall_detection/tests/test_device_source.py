@@ -61,6 +61,11 @@ def fake_point_cloud(signal_name, *, xs, ys, zs, velocities, snrs):
     )
 
 
+class ExplodingConvertHifApi(FakeHifApi):
+    def ConvertPointCloudData(self, payload, frame_index, frame_len):
+        raise RuntimeError("convert failed in callback")
+
+
 class DeviceSourceTests(unittest.TestCase):
     def test_point_cloud_objects_convert_to_combined_frame_by_signal_name(self):
         motion = fake_point_cloud(
@@ -166,6 +171,22 @@ class DeviceSourceTests(unittest.TestCase):
         self.assertNotIn(("StopRadar",), api.calls)
         self.assertNotIn(("StartRadar",), api.calls)
         self.assertNotIn(("SendConfigFile",), api.calls)
+
+    def test_hif_callback_conversion_failure_is_captured_without_propagating(self):
+        api = ExplodingConvertHifApi([])
+        buffer = LatestFrameBuffer()
+        source = HifDevicePointCloudSource(api_factory=lambda: api)
+
+        source.start(buffer)
+        api.callback.emit(
+            SimpleNamespace(dataType=4, frameIndex=11, frameLen=64, timeStamp=1600, payloadData=b"payload")
+        )
+        source.stop()
+        source.join()
+
+        self.assertIsNone(buffer.take_latest())
+        self.assertEqual(source.callback_error_count, 1)
+        self.assertIn("convert failed in callback", source.last_callback_error)
 
     def test_hif_device_source_accepts_datetime_string_timestamp(self):
         api = FakeHifApi(

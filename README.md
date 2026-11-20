@@ -125,6 +125,29 @@ cdk_6240_cpuf\output\mrs6240_p2512.img 当前工程生成的烧录镜像
 
 ## 5. 快速开始
 
+### 5.0 Windows EXE 便携版
+
+本地可构建一个完整程序文件夹，包含 `MRS6240Monitor.exe`（简化监护）、`MRS6240Engineering.exe`（工程调试）及共用的 `_internal/` 依赖。使用时复制整个文件夹，不需要安装 Python；目标电脑仍需安装实际板卡的 USB 驱动，并具备兼容的 .NET Framework（建议 4.8）。默认 COM3，可在界面修改。不能只复制 EXE，也不要同时用两个界面占用同一块板子。
+
+在项目根目录构建：
+
+```powershell
+py -3.12 -m venv .build\portable-env
+powershell -ExecutionPolicy Bypass -File .\tools\windows\build_portable.ps1
+```
+
+输出位于 `releases/<构建时间>/MRS6240-Fall-Monitor/`。程序把运行日志、事件留证、绘图缓存和错误日志保存在程序旁的 `logs/`，因此请把整个文件夹放在可写目录。`build-manifest.json` 记录依赖版本、源码提交和交付文件 SHA256；文件夹附有中文使用说明和本地 SDK 中的原厂驱动压缩包。
+
+构建环境使用 Windows x64 Python 3.12，并需本地原厂 HIF DLL 与 CH347DLLA64.dll。可通过构建脚本的 `-HifDll` / `-Ch347Dll` 参数指定依赖路径。源码、构建脚本与本地交付包分开维护，`releases/` 和 `.build/` 被 Git 忽略，不上传第三方 DLL 或构建产物。
+
+软件依赖自检（不打开串口或 SPI）：
+
+```powershell
+.\MRS6240Monitor.exe --self-test .\logs\self-test.json
+```
+
+必须结合真实板卡再验证连接、点云、报警和恢复；依赖自检不能替代功能验收。
+
 ### 5.1 推荐启动方式
 
 1. 给雷达板上电，等待固件初始化完成。
@@ -138,14 +161,9 @@ cdk_6240_cpuf\output\mrs6240_p2512.img 当前工程生成的烧录镜像
 4. 在上位机点击“一键直连”。程序会连接 `COM3` 和 SPI/HIF，默认不主动发送 `mmwc start`。
 5. 检查串口控制台是否持续出现 `FALL frame=...`，并确认点云区持续更新。若没有状态帧，说明本次镜像未开始测量，应按当前镜像的流程使用界面的“启动雷达”按钮或发送 `mmwc start`。
 
-根目录脚本固定使用：
+根目录的两个实时上位机启动脚本通过 `tools/windows/start_monitor.ps1`，优先打开 `releases/` 下最新的完整便携版。没有便携版时，会依次检查 `fall_detection/.venv` 和 `.build/portable-env` 中的 Python 及依赖，再启动源码。
 
-```text
-fall_detection\.venv\Scripts\python.exe
-fall_detection\serial_event_live_visualizer.py
-```
-
-若虚拟环境不存在，先按第 6 节准备 Python 环境，或修改脚本中的 Python 路径。
+虚拟环境中的 `python.exe` 文件存在，不代表环境仍能运行；卸载或移动它依赖的基础 Python 后也会导致启动失败。可直接使用便携版，或按第 6 节重建源码环境。
 
 ### 5.2 命令行直接启动
 

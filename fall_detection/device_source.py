@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import ctypes
 import importlib
+import os
 import sys
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,6 +12,7 @@ from typing import Callable, Iterable
 
 from .datadealer_loader import CombinedFrame, Point3D
 from .live_source import LatestFrameBuffer
+from .runtime_paths import default_hif_dll_path
 
 
 POINT_CLOUD_DATA_TYPE = 4
@@ -51,6 +55,11 @@ class HifDevicePointCloudSource:
         self.api: object | None = None
         self.buffer: LatestFrameBuffer | None = None
         self._running = False
+        self.callback_error_count = 0
+        self.last_callback_error: str | None = None
+        self._callback_error_lock = threading.Lock()
+        self._dll_directory_handle = None
+        self._native_library = None
 
     @property
     def is_running(self) -> bool:
@@ -60,6 +69,9 @@ class HifDevicePointCloudSource:
         if self._running:
             return
         self.buffer = buffer
+        with self._callback_error_lock:
+            self.callback_error_count = 0
+            self.last_callback_error = None
         self.api = self._create_api()
         self.api.callback += self._data_callback
         if self.config.transport == "uart":
@@ -99,37 +111,50 @@ class HifDevicePointCloudSource:
         if not dll_path.exists():
             raise FileNotFoundError(f"HifMsgDataCollectionLib.dll not found: {dll_path}")
         dll_dir = str(dll_path.parent)
+        if hasattr(os, "add_dll_directory") and self._dll_directory_handle is None:
+            self._dll_directory_handle = os.add_dll_directory(dll_dir)
+        native_dll = dll_path.with_name("CH347DLLA64.dll")
+        if os.name == "nt" and native_dll.is_file() and self._native_library is None:
+            # .NET Framework P/Invoke must also resolve the packaged native DLL.
+            self._native_library = ctypes.WinDLL(str(native_dll.resolve()))
         if dll_dir not in sys.path:
             sys.path.append(dll_dir)
         try:
             import clr
         except ImportError as exc:
             raise RuntimeError("pythonnet is required to use HifMsgDataCollectionLib.dll") from exc
-        clr.AddReference(dll_path.stem)
+        clr.AddReference(str(dll_path.resolve()))
         module = importlib.import_module(dll_path.stem)
         return module.HifMsgDataCollectionApi()
 
     def _data_callback(self, _sender, receive_data) -> None:
         if self.buffer is None or int(getattr(receive_data, "dataType", -1)) != POINT_CLOUD_DATA_TYPE:
             return
-        payload = _payload_bytes(receive_data)
-        point_clouds = self.api.ConvertPointCloudData(
-            payload,
-            getattr(receive_data, "frameIndex", 0),
-            getattr(receive_data, "frameLen", 0),
-        )
-        raw_frame_index = getattr(receive_data, "frameIndex", 0)
-        raw_timestamp = getattr(receive_data, "timeStamp", raw_frame_index)
-        timestamp_ms = _coerce_timestamp_ms(raw_timestamp, fallback=_coerce_timestamp_ms(raw_frame_index, fallback=0))
-        frame_index = _coerce_int(raw_frame_index, fallback=timestamp_ms)
-        frame = point_clouds_to_combined_frame(
-            point_clouds or (),
-            frame_index=frame_index,
-            timestamp_ms=timestamp_ms,
-            timestamp_text=str(raw_timestamp),
-        )
-        self.buffer.publish(frame)
-
+        try:
+            payload = _payload_bytes(receive_data)
+            point_clouds = self.api.ConvertPointCloudData(
+                payload,
+                getattr(receive_data, "frameIndex", 0),
+                getattr(receive_data, "frameLen", 0),
+            )
+            raw_frame_index = getattr(receive_data, "frameIndex", 0)
+            raw_timestamp = getattr(receive_data, "timeStamp", raw_frame_index)
+            timestamp_ms = _coerce_timestamp_ms(raw_timestamp, fallback=_coerce_timestamp_ms(raw_frame_index, fallback=0))
+            frame_index = _coerce_int(raw_frame_index, fallback=timestamp_ms)
+            frame = point_clouds_to_combined_frame(
+                point_clouds or (),
+                frame_index=frame_index,
+                timestamp_ms=timestamp_ms,
+                timestamp_text=str(raw_timestamp),
+            )
+            self.buffer.publish(frame)
+        except Exception as exc:
+            # The .NET callback originates on a native thread.  Keep the process alive and
+            # expose the failure so the GUI can persist it with point-cloud stale diagnostics.
+            error_text = f"{type(exc).__name__}: {exc}"
+            with self._callback_error_lock:
+                self.callback_error_count += 1
+                self.last_callback_error = error_text
 
 def point_clouds_to_combined_frame(
     point_clouds: Iterable[object],
@@ -233,11 +258,4 @@ def _coerce_int(value: object, *, fallback: int) -> int:
 
 
 def _default_hif_dll_path() -> Path:
-    return (
-        Path(__file__).resolve().parents[1]
-        / "SDK"
-        / "Software_Kit"
-        / "03_Tool"
-        / "HifMsgDataCollectionLib"
-        / "HifMsgDataCollectionLib.dll"
-    )
+    return default_hif_dll_path()
