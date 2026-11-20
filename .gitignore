@@ -7,6 +7,12 @@
 **/.cdk/
 *.py[cod]
 *.egg-info/
+/.build/
+/releases/
+/handover/
+/toolchains/
+*.bundle
+*.zip.sha256
 
 # Nested repository metadata retained locally during monorepo migration
 **/.git.local-backup/

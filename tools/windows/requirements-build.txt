@@ -1,0 +1,5 @@
+pyinstaller==6.22.3
+matplotlib==3.11.2
+pythonnet==3.2.1
+pyserial==3.5
+pytest==9.1.1

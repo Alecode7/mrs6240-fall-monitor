@@ -30,6 +30,7 @@ if __package__ in {None, ""}:
     from fall_detection.raw_visualization import RawFrameHistory, RawFrameView, RawTimeline, raw_view_from_frame
     from fall_detection.recording_replay import RecordedSessionReplay, load_recorded_session
     from fall_detection.serial_event import BoardFrameStatus, FallSerialEvent, SerialLogReader, SerialRecord
+    from fall_detection.runtime_paths import default_log_directory
 else:
     from .datadealer_loader import Point3D
     from .device_source import HifDeviceConfig, HifDevicePointCloudSource
@@ -39,11 +40,12 @@ else:
     from .raw_visualization import RawFrameHistory, RawFrameView, RawTimeline, raw_view_from_frame
     from .recording_replay import RecordedSessionReplay, load_recorded_session
     from .serial_event import BoardFrameStatus, FallSerialEvent, SerialLogReader, SerialRecord
+    from .runtime_paths import default_log_directory
 
 
 configure_chinese_matplotlib_font()
 
-DEFAULT_SESSION_LOG_DIR = Path(__file__).resolve().parents[1] / "logs" / "realtime_fall"
+DEFAULT_SESSION_LOG_DIR = default_log_directory()
 RADAR_START_COMMAND = "mmwc start"
 RADAR_STOP_COMMAND = "mmwc stop"
 FALL_CONFIG_COMMAND = "fall_config"
