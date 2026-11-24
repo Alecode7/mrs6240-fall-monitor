@@ -1,4 +1,4 @@
-# Local Python environments and generated caches
+# 本地 Python 环境与自动生成的缓存
 **/.venv/
 **/__pycache__/
 **/.pytest_cache/
@@ -9,11 +9,15 @@
 *.egg-info/
 /.build/
 /releases/
+/handover/
+/toolchains/
+*.bundle
+*.zip.sha256
 
-# Nested repository metadata retained locally during monorepo migration
+# 整合仓库时保留在本地的旧子仓库元数据
 **/.git.local-backup/
 
-# Runtime logs, captures, annotations, and personal test material
+# 运行日志、采集标注及个人测试资料
 /logs/
 /datadealer/
 /fall_capture_station/
@@ -24,7 +28,7 @@
 /fall_detection/tests/test_capture_station_recorder.py
 /fall_detection/DataCollection_demo.py
 
-# Hardware documents and vendor runtime binaries
+# 原厂硬件文档、运行库与工具压缩包
 /MRS6240文档类/
 *.dll
 *.exe
@@ -32,7 +36,7 @@
 *.7z
 *.rar
 
-# Firmware build products and locally archived images
+# 固件构建产物与本地镜像备份
 *.img
 *.bin
 *.elf
@@ -49,8 +53,8 @@
 /fall_rule.obj
 /firmware_rule_harness.obj
 
-# The vendor SDK is not redistributed. Only the Falldown application-layer
-# source and its MRS6240-P2512 project descriptors are versioned below.
+# 不分发完整厂商 SDK；仅跟踪 Falldown 应用层源码及
+# MRS6240-P2512 所需的工程描述文件。
 /SDK/*
 !/SDK/Software_Kit/
 /SDK/Software_Kit/*
@@ -74,8 +78,3 @@
 /SDK/Software_Kit/02_SDK/psdf_sdk/project/mmwave/mmwave_application/Falldown/cdk_6240_cpuf/*
 !/SDK/Software_Kit/02_SDK/psdf_sdk/project/mmwave/mmwave_application/Falldown/cdk_6240_cpuf/project.cdkws
 !/SDK/Software_Kit/02_SDK/psdf_sdk/project/mmwave/mmwave_application/Falldown/cdk_6240_cpuf/project.cdkproj
-# Local handover/scratch artifacts that are not part of the public monitor
-/tmp/
-/tmp_*.py
-/docs/HANDOVER_*.md
-/tools/handover/

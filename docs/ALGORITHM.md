@@ -1,77 +1,77 @@
-# Board-Side Fall Decision Strategy
+# 板端跌倒判断策略
 
-## Scope
+## 算法职责与适用配置
 
-The fall decision runs on the MRS6240-P2512 board. The real-time PC application only parses `FALL` status frames and `FALL_EVENT` events, presents the alarm, records evidence, and visualizes raw point clouds. It does not replace, vote on, or override the board-side decision.
+跌倒判断运行在 MRS6240-P2512 雷达板上。实时上位机解析 `FALL` 状态帧和 `FALL_EVENT` 事件，负责显示、报警、留证和原始点云可视化。实时告警以板端判断为准。
 
-Core implementation files:
+核心实现文件：
 
-- `Falldown/src/fall_pipeline.c`: coordinate conversion, ROI filtering, clustering, single-target association, temporary hold, and target reacquisition.
-- `Falldown/src/fall_rule.c`: state machine, height history, candidate/suspect/confirmed transitions, and recovery.
-- `Falldown/src/prj_config.h`: current deployment and rule thresholds.
+- `Falldown/src/fall_pipeline.c`：坐标转换、ROI 过滤、聚类、单目标关联、短时保持和目标重捕获。
+- `Falldown/src/fall_rule.c`：状态机、高度历史、候选/疑似/确认转换及恢复判断。
+- `Falldown/src/prj_config.h`：当前安装配置和算法阈值。
 
-The current public configuration targets a ceiling-down installation: default mount height `310 cm`, pitch `90 deg`, and ROI `x=-250..250 cm`, `y=-250..250 cm`, `z=0..220 cm`. `fall_height <cm>` changes the persisted mount height only. Pitch, ROI, and decision thresholds remain build-time settings and must be validated again after a deployment change.
+当前公开配置面向天花板垂直向下安装：默认高度 `310 cm`、俯角 `90°`，ROI 为 `x=-250..250 cm`、`y=-250..250 cm`、`z=0..220 cm`。`fall_height <cm>` 只修改并持久化安装高度；俯角、ROI 和判断阈值仍在编译时配置，安装条件改变后需要重新验证。
 
-## Processing Pipeline
+## 数据处理流程
 
 ```text
-motion + presence point clouds
-  -> coordinate conversion and ROI/SNR filtering
-  -> radius clustering and body-size filtering
-  -> one selected target with short loss hold / controlled reacquisition
-  -> height and motion history
-  -> NORMAL -> CANDIDATE -> SUSPECTED -> CONFIRMED
-  -> sustained stand-up evidence -> NORMAL
+运动点云 + 存在点云
+  -> 坐标转换、ROI/SNR 过滤
+  -> 半径聚类、目标尺寸约束
+  -> 单目标跟踪、短时丢失保持与重捕获
+  -> 累积高度与运动历史
+  -> 正常 -> 内部候选 -> 疑似跌倒 -> 确认跌倒
+  -> 持续满足站起条件 -> 恢复正常
 ```
 
-Both point-cloud streams are used. Motion points expose movement and speed near the fall, while presence points preserve a low, still body after motion subsides. The decision uses the selected target rather than any individual raw point.
+两类点云共同参与处理。运动点用于观察跌倒前后的动作和速度，存在点用于保留动作减弱后静止、低姿态的人体信息。判断基于选中的目标点云簇；其中心高度是点云统计结果，不等于人体身高。
 
-## State Transitions
+## 状态转换条件
 
-### 1. Candidate
+### 1. 内部候选
 
-A candidate is created only when all of the following are true:
+同时满足以下条件时，建立内部跌倒候选：
 
-- In the preceding `3500 ms`, the selected target has fallen at least `80 cm` from its recent high point.
-- Recent samples show fall-related motion: absolute speed reaches `45 cm/s` or motion-point count reaches `20`.
-- The target is in a low posture: height is no greater than `55 cm`, and at least `92%` of the preceding `700 ms` height history is also at or below that level.
+- 最近 `3500 ms` 内，目标相对近期最高中心高度下降至少 `80 cm`。
+- 近期有运动证据：绝对速度达到 `45 cm/s`，或运动点数达到 `20`。
+- 当前目标高度不超过 `55 cm`，且此前 `700 ms` 高度窗口中的低位样本比例至少为 `92%`。
 
-This prevents a single low point or a normal slow posture change from immediately becoming an alarm candidate.
+候选需要下降量、运动证据和持续低位共同成立，减少单帧低点造成的误触发。候选属于内部过程，不要假设它有独立的串口数值状态。
 
-### 2. Suspected fall
+### 2. 疑似跌倒（SUSPECTED）
 
-An active candidate enters `SUSPECTED` only when the target remains fresh and terminally low:
+已有候选，并且目标的新鲜观测与终态低位证据满足以下条件时，进入疑似跌倒：
 
-- Current target height is no greater than `40 cm`.
-- At least three fresh target samples cover `700 ms`.
-- At least `92%` of that fresh-sample window is no greater than `40 cm`.
+- 当前目标有新鲜观测，高度不超过 `40 cm`。
+- 有效连续样本覆盖 `700 ms`，数量至少为 `3`。
+- 该窗口内高度不超过 `40 cm` 的样本比例至少为 `92%`。
 
-Brief tracker hold periods are tolerated for up to `800 ms`; a longer interruption clears continuity evidence rather than stitching unrelated targets together.
+候选阶段对短时跟踪保持（HOLD）的容错上限为 `800 ms`。容错期内可保留连续性证据，但当前新鲜标志仍反映真实观测；缺口过长时清空相关连续性证据。
 
-### 3. Confirmed fall
+### 3. 确认跌倒（CONFIRMED）
 
-`CONFIRMED` is emitted only after the suspected target continues to satisfy all confirmation evidence:
+进入疑似后，还需同时满足以下条件才能确认跌倒：
 
-- At least `1200 ms` has elapsed since the suspected event.
-- At least six fresh samples cover the confirmation window.
-- The target remains at or below `40 cm` for at least `70%` of the window.
-- The target has moved at least `30 cm` horizontally from the pre-fall anchor at some point in the candidate period.
+- 自疑似事件产生后重新计时，至少经过 `1200 ms`。
+- 有效连续样本覆盖确认窗口，数量至少为 `6`。
+- 当前仍有新鲜低位目标，窗口内高度不超过 `40 cm` 的样本比例至少为 `70%`。
+- 候选期间，相对跌前锚点的最大水平位移至少达到 `30 cm`。
 
-The event reason records whether the final posture is still (`LOW_STILL`) or remains active (`LOW_ACTIVE`). The alarm stays in `CONFIRMED`; it does not disappear after one frame.
+事件原因区分低位静止（`LOW_STILL`）和低位仍有活动（`LOW_ACTIVE`）。确认状态会保持，直到满足恢复条件。
 
-### 4. Recovery
+### 4. 站起恢复
 
-The system returns to `NORMAL` only after fresh, sustained standing evidence:
+持续满足以下站起证据后，恢复为正常状态：
 
-- Target height reaches at least `85 cm` for `1000 ms`.
-- The standing target stays within `80 cm` of the confirmed low-position center, or within `100 cm` of the pre-fall standing anchor.
+- 目标有新鲜观测，中心高度至少为 `85 cm`，持续至少 `1000 ms`。
+- 目标距确认时的低位中心不超过 `80 cm`，或距跌前站立锚点不超过 `100 cm`。
 
-The two recovery anchors handle backward/forward falls: a person may stand up near the original leg position instead of the low center of the fallen posture. They also prevent a distant high background cluster from clearing an active alarm.
+双位置参考允许人在前倒、后倒后从接近原腿部的位置站起，兼顾跌前位置与跌后中心的偏移；同时约束恢复目标的位置，避免远处高位背景簇解除报警。
 
-## Tracking Guardrails
+## 跟踪约束
 
-The pipeline rejects weak/background clusters before they reach the state machine. It uses a `45 cm` clustering radius, minimum cluster size of three points, normal association gate of `50 cm`, lateral reacquisition gate of `85 cm` for low targets, and a `3000 ms` tracking hold. A far candidate must remain stable for five frames before replacing the tracked target.
+点云处理阶段先过滤弱目标与背景簇，再进入状态机。当前聚类半径为 `45 cm`，最小簇点数为 `3`，常规关联门限为 `50 cm`；低位目标的横向重捕获门限为 `85 cm`，跟踪保持时间为 `3000 ms`。远处的新目标需要连续稳定 `5` 帧，才能替换当前跟踪目标。
 
-## Important Limits
+## 当前限制
 
-This is a single-target, rule-based embedded algorithm, not a machine-learning classifier and not a certified medical or safety device. Thresholds above were tuned against the current installation and test actions. Changing room geometry, radar height, pitch, ROI, or target population requires new regression data and test verification; thresholds must not be copied to a new deployment without validation.
+当前算法使用单目标规则状态机，没有引入机器学习分类器。上述参数基于当前安装条件和测试动作调整，不等同于医疗或安全产品认证。房间结构、雷达高度、俯角、ROI 或使用人群改变后，需要补充数据并重新做回归验证。

@@ -1,6 +1,6 @@
 # MRS6240-P2512 跌倒检测项目
 
-> Ceiling-mounted MRS6240-P2512 mmWave fall detection and monitoring system with embedded fall-state logic, persistent deployment configuration, real-time monitoring, audible alerts, and device health checks.
+> 基于 MRS6240-P2512 毫米波雷达的顶装跌倒监护系统，支持板端状态机判断、安装配置持久化、实时监护、声音报警和设备健康检查。
 
 这是一个基于 POSSUMIC MRS6240-P2512 毫米波雷达的跌倒检测工程。项目包含两部分：
 
@@ -482,13 +482,15 @@ fall_detection\.venv\Scripts\python.exe `
 上位机协议和界面核心测试可在根目录执行：
 
 ```powershell
-$env:PYTHONPATH = 'D:\MRS6240-P2512\MRS6240-P2512'
-D:\Anaconda\anaconda\python.exe -m pytest -q `
+$env:PYTHONPATH = (Get-Location).Path
+.\.build\portable-env\Scripts\python.exe -m pytest -q `
+  fall_detection\tests\test_runtime_paths.py `
+  fall_detection\tests\test_device_source.py `
   fall_detection\tests\test_serial_event.py `
   fall_detection\tests\test_serial_event_live_visualizer.py
 ```
 
-已验证的实时协议与监护界面测试为 `47 passed`。本项目的实时告警依据始终是板端 `FALL_EVENT`，不要把点云展示或历史离线数据问题误判为板端状态机失效。
+上述路径、设备适配、实时协议与监护界面测试为 `54 passed`。追加 `test_firmware_falldown_contract.py` 后，当前结果为 `63 passed, 1 failed`：旧断言仍期望 `163cm / 30°`、旧 ROI 和 `60cm` 水平位移，与当前顶装 `310cm / 90°`、XY ROI 各 `±250cm`、`30cm` 位移基线不一致。该历史测试保留为已知问题，未因此改动算法参数。本项目的实时告警依据始终是板端 `FALL_EVENT`，不要把点云展示或历史离线数据问题误判为板端状态机失效。
 
 建议把每次物理测试按下表记录：
 
@@ -527,8 +529,11 @@ D:\Anaconda\anaconda\python.exe -m pytest -q `
 
 - 实时状态上位机说明：[fall_detection/README.md](fall_detection/README.md)
 - 板端判断策略：[docs/ALGORITHM.md](docs/ALGORITHM.md)
+- 离线研发交接说明模板：[docs/HANDOVER_20261119.md](docs/HANDOVER_20261119.md)
 - 厂商 SDK 与文档：`SDK/`、`MRS6240文档类/`
 - 真实运行日志：`logs/realtime_fall/`
+
+`tools/handover/package_handover.py` 用于组装定向的离线研发交接包，需要本地完整 SDK、已完成的 EXE 便携版和交叉编译器；这些附件不在公开仓库中。模板中的 `project/`、`firmware/`、`history/` 等路径以生成后的交接包根目录为准。交接包、编译器、Git bundle、运行数据和第三方工具不随源码推送到 GitHub。
 
 ---
 

@@ -1,4 +1,4 @@
-param(
+﻿param(
     [ValidateSet("engineering", "monitor")]
     [string]$UiMode = "engineering"
 )
@@ -19,7 +19,7 @@ if (Test-Path -LiteralPath $releaseRoot) {
     }
 }
 
-# A venv launcher may exist even after its base Python has been uninstalled.
+# 基础 Python 被卸载后，虚拟环境中的启动文件可能仍然存在，必须实际检查能否运行。
 foreach ($relativePython in @("fall_detection\.venv\Scripts\python.exe", ".build\portable-env\Scripts\python.exe")) {
     $python = Join-Path $projectRoot $relativePython
     if (-not (Test-Path -LiteralPath $python)) { continue }
@@ -35,4 +35,4 @@ foreach ($relativePython in @("fall_detection\.venv\Scripts\python.exe", ".build
     } finally { Pop-Location }
     return
 }
-throw "No complete portable release or working Python environment found. Build the Windows portable package, or recreate fall_detection\.venv with the required dependencies."
+throw "未找到完整便携版或可用的 Python 环境。请先构建便携版，或重建 fall_detection\.venv 并安装依赖。"

@@ -81,7 +81,7 @@ class HifDevicePointCloudSource:
         if not opened:
             self.api.callback -= self._data_callback
             self.api = None
-            raise RuntimeError(f"failed to open {self.config.transport} device")
+            raise RuntimeError(f"无法打开 {self.config.transport} 数据设备，请检查驱动、连接及端口占用")
         self.api.StartCollectingData()
         self._running = True
 
@@ -109,20 +109,20 @@ class HifDevicePointCloudSource:
             return self.api_factory()
         dll_path = Path(self.config.dll_path) if self.config.dll_path is not None else _default_hif_dll_path()
         if not dll_path.exists():
-            raise FileNotFoundError(f"HifMsgDataCollectionLib.dll not found: {dll_path}")
+            raise FileNotFoundError(f"未找到雷达 HIF 运行库 HifMsgDataCollectionLib.dll：{dll_path}")
         dll_dir = str(dll_path.parent)
         if hasattr(os, "add_dll_directory") and self._dll_directory_handle is None:
             self._dll_directory_handle = os.add_dll_directory(dll_dir)
         native_dll = dll_path.with_name("CH347DLLA64.dll")
         if os.name == "nt" and native_dll.is_file() and self._native_library is None:
-            # .NET Framework P/Invoke must also resolve the packaged native DLL.
+            # 预加载随包分发的本地 DLL，供 .NET Framework 的 P/Invoke 调用。
             self._native_library = ctypes.WinDLL(str(native_dll.resolve()))
         if dll_dir not in sys.path:
             sys.path.append(dll_dir)
         try:
             import clr
         except ImportError as exc:
-            raise RuntimeError("pythonnet is required to use HifMsgDataCollectionLib.dll") from exc
+            raise RuntimeError("加载 HifMsgDataCollectionLib.dll 需要安装 pythonnet") from exc
         clr.AddReference(str(dll_path.resolve()))
         module = importlib.import_module(dll_path.stem)
         return module.HifMsgDataCollectionApi()
@@ -149,12 +149,12 @@ class HifDevicePointCloudSource:
             )
             self.buffer.publish(frame)
         except Exception as exc:
-            # The .NET callback originates on a native thread.  Keep the process alive and
-            # expose the failure so the GUI can persist it with point-cloud stale diagnostics.
+            # .NET 回调来自原生线程；记录异常并交给点云超时诊断处理，避免进程退出。
             error_text = f"{type(exc).__name__}: {exc}"
             with self._callback_error_lock:
                 self.callback_error_count += 1
                 self.last_callback_error = error_text
+
 
 def point_clouds_to_combined_frame(
     point_clouds: Iterable[object],

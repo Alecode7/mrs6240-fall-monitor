@@ -1,7 +1,7 @@
 [project]
 name = "fall-detection"
 version = "0.1.0"
-description = "Add your description here"
+description = "MRS6240-P2512 毫米波雷达实时跌倒监护、点云可视化与离线验证工具"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
