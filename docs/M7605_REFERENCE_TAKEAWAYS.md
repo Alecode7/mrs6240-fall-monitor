@@ -1,73 +1,73 @@
-# M7605 Reference Takeaways
+# M7605 参考项目吸收结论
 
-## Status
+## 状态
 
-The local M7605 module and its Qt client were used only as a black-box reference. The module and client were reported as successfully run by the operator. No M7605 binary frame parser, command code, Qt source, or deployment thresholds are copied into this project.
+本次只把本地 M7605 模块和 Qt 上位机当作黑盒参考。模块与上位机已由操作者确认跑通，但没有复制 M7605 的二进制帧解析、命令码、Qt 源码或部署阈值。
 
-MRS6240 keeps its own transport and protocol contracts:
+MRS6240 继续保持自己的传输与协议边界：
 
-- Control UART: text `FALL` status frames, `FALL_EVENT` events, and text configuration commands.
-- Point cloud: the SDK/HIF SPI data path.
-- Decision authority: the MRS6240 board; the PC never re-votes or overrides a fall decision.
+- 控制 UART：文本 `FALL` 状态帧、`FALL_EVENT` 事件和文本配置命令。
+- 点云：SDK/HIF SPI 数据链路。
+- 判断权威：MRS6240 板端固件；PC 不重新投票，也不覆盖板端跌倒判断。
 
-## What was absorbed
+## 已吸收的部分
 
-### 1. Make link and parser quality visible
+### 1. 让链路与解析质量可见
 
-The reference client surfaces invalid frames with a reason and a short raw sample instead of silently dropping them. The same principle is now applied to the MRS6240 text control link:
+参考客户端会把无效帧的原因和少量原始样本展示出来，而不是静默丢弃。这个设计思想已吸收到 MRS6240 的文本控制链路：
 
-- `SerialLogReader` keeps a thread-safe diagnostic snapshot.
-- It counts received lines, `FALL` status frames, `FALL_EVENT` events, unrelated console lines, and lines that required Unicode replacement characters.
-- The engineering serial tab shows `RX`, `FALL`, `EVENT`, other-line, decode-loss, and status-frame ratio.
-- A compact diagnostic line is written to the session log every 10 seconds while the control port is connected.
+- `SerialLogReader` 维护线程安全的诊断快照。
+- 统计接收行数、`FALL` 状态帧、`FALL_EVENT` 事件、无关控制台行，以及需要 Unicode 替换字符的行。
+- 工程界面串口页显示 `RX`、`FALL`、`EVENT`、其他行、解码异常和状态帧占比。
+- 控制串口连接期间，每 10 秒向会话日志写入一条紧凑诊断记录。
 
-This does not change command encoding or event semantics. It makes a noisy console, a stalled firmware loop, or a baud/encoding problem visible during field diagnosis.
+这些改动不改变命令编码和事件语义，但能让控制台噪声、固件状态循环停住、波特率或编码异常在现场排障时被看见。
 
-### 2. Keep an explicit capability boundary
+### 2. 明确协议能力边界
 
-The reference project uses a support matrix to distinguish enabled commands from protocol placeholders that the firmware does not currently implement. The equivalent MRS6240 boundary is:
+参考项目用支持矩阵区分已启用命令和固件暂未实现的协议占位。MRS6240 的对应边界如下：
 
-| Capability | Current MRS6240 contract |
+| 能力 | 当前 MRS6240 契约 |
 | --- | --- |
-| Board heartbeat/status | Continuous `FALL frame=... state=...` text frames |
-| Realtime alarm | Board-emitted `FALL_EVENT state=suspected/confirmed/recovered` |
-| Persistent deployment value | `fall_height <cm>` and `FALL_HEIGHT` replies |
-| Build-time deployment echo | `fall_config` / `FALL_CFG` |
-| PC-side visualization | SPI/HIF point clouds and board-target association for diagnosis only |
-| PC-side decision | Not supported; the board is the only realtime decision authority |
+| 板端心跳/状态 | 连续 `FALL frame=... state=...` 文本帧 |
+| 实时报警 | 板端发出的 `FALL_EVENT state=suspected/confirmed/recovered` |
+| 持久部署值 | `fall_height <cm>` 与 `FALL_HEIGHT` 回复 |
+| 编译期部署回显 | `fall_config` / `FALL_CFG` |
+| PC 端可视化 | SPI/HIF 点云与板端目标关联，仅用于诊断 |
+| PC 端判断 | 不支持；板端是唯一实时判断权威 |
 
-A feature should remain hidden or shown as an explicit diagnostic state until the board firmware defines a stable reply contract and tests are added on both sides.
+在板端固件定义稳定回复契约并补齐双侧测试前，新能力应保持隐藏，或只显示为明确的诊断状态。
 
-### 3. Preserve queryable deployment state
+### 3. 保留可查询的部署状态
 
-The reference client queries parameters after connecting instead of relying only on startup messages. MRS6240 already follows this pattern with `fall_config`, and the monitor uses the reply for deployment readiness. This remains a required pattern after any firmware configuration change.
+参考客户端连接后会主动查询参数，而不是只依赖启动日志。MRS6240 已经通过 `fall_config` 遵循这个模式，监护界面使用回复结果判断部署就绪。后续任何固件配置改动都应继续保留这个查询链路。
 
-### 4. Separate operator and engineering surfaces
+### 4. 区分操作员与工程界面
 
-The reference client keeps unsupported or risky maintenance functions out of the normal operator flow. MRS6240 preserves the same separation: the simplified monitor exposes monitoring, alarm, health, and deployment state; raw point-cloud, serial console, threshold, and debug controls remain in the engineering UI.
+参考客户端把未支持或高风险维护功能排除在普通操作员流程外。MRS6240 保持同样的界面分工：简化监护界面只提供监护、报警、健康和部署状态；原始点云、串口控制台、阈值和调试入口保留在工程界面。
 
-## Deliberately not adopted
+## 明确不吸收的部分
 
-- The M7605 `53 59` business framing and `55 AA` cloud framing.
-- M7605 point scaling, angle conversion, and sign-magnitude trajectory fields.
-- M7605 installation-height, ROI, presence, track, and OTA parameter ranges.
-- Any PC-side fall classifier or trajectory-based alarm override.
+- M7605 `53 59` 业务帧格式和 `55 AA` 点云帧格式。
+- M7605 点云缩放、角度换算和 sign-magnitude 轨迹字段。
+- M7605 安装高度、ROI、存在感、轨迹与 OTA 参数范围。
+- 任何 PC 端跌倒分类器或基于轨迹的报警覆盖逻辑。
 
-These values and formats were validated only for the M7605 module. Mixing them into MRS6240 would create a false appearance of protocol compatibility.
+这些数值和格式只对 M7605 模块验证过。直接混入 MRS6240 会造成虚假的协议兼容表象。
 
-## Future backlog
+## 后续备选事项
 
-- Add a board identity/version query only after defining a stable text command and reply.
-- Add explicit fault-code reporting if firmware can distinguish SPI callback, clustering, flash, and UART faults.
-- Consider a compact target-history view only if field testing shows that the existing point timeline and target association are insufficient.
+- 待板端定义稳定文本命令与回复后，增加设备身份/版本查询。
+- 若固件能区分 SPI 回调、聚类、Flash 和 UART 故障，再增加显式故障码。
+- 仅当现有点云时间线与目标关联不足以支撑现场分析时，再考虑紧凑目标历史视图。
 
-## Regression requirement
+## 回归要求
 
-Changes to serial parsing or diagnostics must continue to exercise:
+后续修改串口解析或诊断时，必须继续覆盖：
 
-- `FALL` status parsing.
-- `FALL_EVENT` parsing and duplicate suppression.
-- TX CRLF encoding.
-- RX decode fallback.
-- Serial diagnostics classification and throttling.
-- Batched UI polling.
+- `FALL` 状态解析。
+- `FALL_EVENT` 解析与重复事件抑制。
+- TX CRLF 编码。
+- RX 解码回退。
+- 串口诊断分类与节流。
+- 界面批量轮询。
