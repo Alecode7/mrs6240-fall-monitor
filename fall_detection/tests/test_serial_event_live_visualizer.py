@@ -12,7 +12,7 @@ from matplotlib.figure import Figure
 from fall_detection.datadealer_loader import CombinedFrame, Point3D
 from fall_detection.live_source import LatestFrameBuffer
 from fall_detection.raw_visualization import RawFrameHistory, raw_view_from_frame
-from fall_detection.serial_event import SerialRecord, parse_board_status, parse_fall_event
+from fall_detection.serial_event import SerialDiagnostics, SerialRecord, parse_board_status, parse_fall_event
 from fall_detection.serial_event_live_visualizer import (
     BoardEventState,
     BoardDeploymentConfig,
@@ -21,7 +21,9 @@ from fall_detection.serial_event_live_visualizer import (
     POINT_DATA_STALE_AFTER_S,
     POINT_DIAGNOSTIC_INTERVAL_S,
     POINT_RECONNECT_DELAY_MS,
+    SERIAL_DIAGNOSTIC_INTERVAL_S,
     PlotBounds,
+    serial_diagnostics_text,
     SerialEventLiveVisualizerApp,
     board_target_association,
     board_target_association_text,
@@ -560,6 +562,52 @@ class SerialEventLiveVisualizerTests(unittest.TestCase):
     @staticmethod
     def _offsets(artist) -> tuple[tuple[float, float], ...]:
         return tuple(tuple(float(value) for value in row) for row in artist.get_offsets())
+
+    def test_serial_diagnostics_text_is_compact_and_operator_readable(self) -> None:
+        text = serial_diagnostics_text(
+            SerialDiagnostics(
+                received_lines=120,
+                status_frames=100,
+                fall_events=2,
+                other_lines=18,
+                decode_replacement_lines=1,
+            )
+        )
+
+        self.assertIn("RX=120", text)
+        self.assertIn("FALL=100", text)
+        self.assertIn("EVENT=2", text)
+        self.assertIn("其他=18", text)
+        self.assertIn("解码异常=1", text)
+        self.assertIn("状态占比=83.3%", text)
+
+    def test_serial_diagnostics_are_throttled_into_session_log(self) -> None:
+        app = object.__new__(SerialEventLiveVisualizerApp)
+        app._closed = False
+        app.source_mode = "device"
+        app.serial_reader = SimpleNamespace(
+            is_connected=True,
+            diagnostics=SerialDiagnostics(received_lines=10, status_frames=9, fall_events=1),
+        )
+        app._last_serial_diagnostics_at_monotonic = 100.0
+        notes: list[str] = []
+        app._write_session_note = notes.append
+
+        with patch(
+            "fall_detection.serial_event_live_visualizer.time.monotonic",
+            return_value=100.0 + SERIAL_DIAGNOSTIC_INTERVAL_S - 0.1,
+        ):
+            SerialEventLiveVisualizerApp._maybe_write_serial_diagnostics(app)
+        self.assertEqual(notes, [])
+
+        with patch(
+            "fall_detection.serial_event_live_visualizer.time.monotonic",
+            return_value=100.0 + SERIAL_DIAGNOSTIC_INTERVAL_S,
+        ):
+            SerialEventLiveVisualizerApp._maybe_write_serial_diagnostics(app)
+        self.assertEqual(len(notes), 1)
+        self.assertIn("RX=10", notes[0])
+        self.assertEqual(app._last_serial_diagnostics_at_monotonic, 110.0)
 
     def test_serial_poll_batches_widget_append_and_processes_every_record(self):
         app = object.__new__(type("TestApp", (), {}))

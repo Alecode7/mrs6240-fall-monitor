@@ -61,6 +61,24 @@ class SerialRecord:
     status: BoardFrameStatus | None = None
 
 
+@dataclass(frozen=True)
+class SerialDiagnostics:
+    """Thread-safe snapshot of control-line parsing quality."""
+
+    received_lines: int = 0
+    status_frames: int = 0
+    fall_events: int = 0
+    other_lines: int = 0
+    decode_replacement_lines: int = 0
+    last_line_at: datetime | None = None
+
+    @property
+    def status_ratio(self) -> float | None:
+        if self.received_lines == 0:
+            return None
+        return self.status_frames / self.received_lines
+
+
 def parse_fall_event(line: str, *, received_at: datetime | None = None) -> FallSerialEvent | None:
     raw_text = str(line).strip().strip("\x00")
     text = _protocol_payload(raw_text, FALL_EVENT_PREFIX)
@@ -150,6 +168,25 @@ class SerialLogReader:
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._write_lock = threading.Lock()
+        self._diagnostics_lock = threading.Lock()
+        self._received_lines = 0
+        self._status_frames = 0
+        self._fall_events = 0
+        self._other_lines = 0
+        self._decode_replacement_lines = 0
+        self._last_line_at: datetime | None = None
+
+    @property
+    def diagnostics(self) -> SerialDiagnostics:
+        with self._diagnostics_lock:
+            return SerialDiagnostics(
+                received_lines=self._received_lines,
+                status_frames=self._status_frames,
+                fall_events=self._fall_events,
+                other_lines=self._other_lines,
+                decode_replacement_lines=self._decode_replacement_lines,
+                last_line_at=self._last_line_at,
+            )
 
     @property
     def is_connected(self) -> bool:
@@ -168,6 +205,7 @@ class SerialLogReader:
                 raise RuntimeError("pyserial is required for the control serial port") from exc
             factory = serial.Serial
         self.serial = factory(port=port, baudrate=int(baud_rate), timeout=0.1)
+        self._reset_diagnostics()
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._read_loop, name="SerialLogReader", daemon=True)
         self._thread.start()
@@ -206,17 +244,41 @@ class SerialLogReader:
                 return
             if not raw_line:
                 continue
-            line = _decode_serial_line(raw_line)
+            line, has_decode_replacement = _decode_serial_line_with_quality(raw_line)
             received_at = datetime.now()
-            self.records.put(
-                SerialRecord(
-                    "rx",
-                    line,
-                    received_at,
-                    parse_fall_event(line, received_at=received_at),
-                    parse_board_status(line, received_at=received_at),
-                )
-            )
+            event = parse_fall_event(line, received_at=received_at)
+            status = parse_board_status(line, received_at=received_at)
+            self.records.put(SerialRecord("rx", line, received_at, event, status))
+            if line:
+                self._record_received_line(event, status, has_decode_replacement, received_at)
+
+    def _reset_diagnostics(self) -> None:
+        with self._diagnostics_lock:
+            self._received_lines = 0
+            self._status_frames = 0
+            self._fall_events = 0
+            self._other_lines = 0
+            self._decode_replacement_lines = 0
+            self._last_line_at = None
+
+    def _record_received_line(
+        self,
+        event: FallSerialEvent | None,
+        status: BoardFrameStatus | None,
+        has_decode_replacement: bool,
+        received_at: datetime,
+    ) -> None:
+        with self._diagnostics_lock:
+            self._received_lines += 1
+            if event is not None:
+                self._fall_events += 1
+            elif status is not None:
+                self._status_frames += 1
+            else:
+                self._other_lines += 1
+            if has_decode_replacement:
+                self._decode_replacement_lines += 1
+            self._last_line_at = received_at
 
     def _close_from_reader(self) -> None:
         """Release a failed port without joining the current reader thread."""
@@ -230,9 +292,13 @@ class SerialLogReader:
 
 
 def _decode_serial_line(raw: bytes) -> str:
+    return _decode_serial_line_with_quality(raw)[0]
+
+
+def _decode_serial_line_with_quality(raw: bytes) -> tuple[str, bool]:
     for encoding in ("utf-8", "gbk", "ascii"):
         try:
-            return raw.decode(encoding).strip("\x00\r\n")
+            return raw.decode(encoding).strip("\x00\r\n"), False
         except UnicodeDecodeError:
             continue
-    return raw.decode("utf-8", errors="replace").strip("\x00\r\n")
+    return raw.decode("utf-8", errors="replace").strip("\x00\r\n"), True

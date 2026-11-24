@@ -29,7 +29,13 @@ if __package__ in {None, ""}:
     from fall_detection.coordinate_transform import transform_frame_to_world
     from fall_detection.raw_visualization import RawFrameHistory, RawFrameView, RawTimeline, raw_view_from_frame
     from fall_detection.recording_replay import RecordedSessionReplay, load_recorded_session
-    from fall_detection.serial_event import BoardFrameStatus, FallSerialEvent, SerialLogReader, SerialRecord
+    from fall_detection.serial_event import (
+        BoardFrameStatus,
+    FallSerialEvent,
+    SerialDiagnostics,
+    SerialLogReader,
+    SerialRecord,
+)
     from fall_detection.runtime_paths import default_log_directory
 else:
     from .datadealer_loader import Point3D
@@ -39,7 +45,13 @@ else:
     from .coordinate_transform import transform_frame_to_world
     from .raw_visualization import RawFrameHistory, RawFrameView, RawTimeline, raw_view_from_frame
     from .recording_replay import RecordedSessionReplay, load_recorded_session
-    from .serial_event import BoardFrameStatus, FallSerialEvent, SerialLogReader, SerialRecord
+    from .serial_event import (
+        BoardFrameStatus,
+    FallSerialEvent,
+    SerialDiagnostics,
+    SerialLogReader,
+    SerialRecord,
+)
     from .runtime_paths import default_log_directory
 
 
@@ -53,6 +65,7 @@ SERIAL_RECONNECT_DELAY_MS = 3000
 POINT_RECONNECT_DELAY_MS = 3000
 POINT_DATA_STALE_AFTER_S = 3.0
 POINT_DIAGNOSTIC_INTERVAL_S = 10.0
+SERIAL_DIAGNOSTIC_INTERVAL_S = 10.0
 BOARD_STATUS_STALE_AFTER_S = 3.0
 TARGET_ASSOCIATION_RADIUS_M = 0.60
 TARGET_ASSOCIATION_ALIGNED_M = 0.35
@@ -192,6 +205,19 @@ def monitor_connection_summary(*, serial_connected: bool, point_health: str, boa
         board_health, "未连接"
     )
     return f"控制口：{serial_text}    点云：{point_text}    板端状态：{board_text}"
+
+
+def serial_diagnostics_text(diagnostics: SerialDiagnostics) -> str:
+    status_ratio = diagnostics.status_ratio
+    ratio_text = f"{status_ratio:.1%}" if status_ratio is not None else "--"
+    return (
+        f"串口诊断 RX={diagnostics.received_lines} "
+        f"FALL={diagnostics.status_frames} "
+        f"EVENT={diagnostics.fall_events} "
+        f"其他={diagnostics.other_lines} "
+        f"解码异常={diagnostics.decode_replacement_lines} "
+        f"状态占比={ratio_text}"
+    )
 
 
 @dataclass(frozen=True)
@@ -531,6 +557,7 @@ class SerialEventLiveVisualizerApp:
         self.point_last_frame_at_monotonic: float | None = None
         self._last_point_diagnostics_at_monotonic: float | None = None
         self._last_point_diagnostic_frame_index: int | None = None
+        self._last_serial_diagnostics_at_monotonic: float | None = None
         self.point_health_state = "disconnected"
         self.deployment_check_requested = False
         self.history = RawFrameHistory(max_frames=history_frames)
@@ -570,6 +597,7 @@ class SerialEventLiveVisualizerApp:
         self.spi_index_var = tk.IntVar(value=int(self.device_config.spi_index))
         self.spi_freq_mode_var = tk.IntVar(value=int(self.device_config.spi_freq_mode))
         self.serial_status_var = tk.StringVar(value="串口未连接")
+        self.serial_diagnostics_var = tk.StringVar(value="串口诊断 RX=0 FALL=0 EVENT=0 其他=0 解码异常=0 状态占比=--")
         self.session_log_var = tk.StringVar(value=f"自动日志: {self.session_log.path}")
         self.serial_port_var = tk.StringVar(value=serial_port)
         self.serial_baud_var = tk.IntVar(value=int(serial_baud))
@@ -835,6 +863,9 @@ class SerialEventLiveVisualizerApp:
             command=self._on_auto_reconnect_changed,
         ).grid(row=0, column=6, padx=(0, 8))
         ttk.Label(controls, textvariable=self.serial_status_var).grid(row=0, column=8, sticky="e")
+        ttk.Label(controls, textvariable=self.serial_diagnostics_var, foreground="#64748b").grid(
+            row=1, column=0, columnspan=9, sticky="w", pady=(4, 0)
+        )
         ttk.Label(self.serial_tab, textvariable=self.session_log_var, foreground="#64748b").grid(
             row=3, column=0, sticky="w", pady=(6, 0)
         )
@@ -1753,6 +1784,12 @@ class SerialEventLiveVisualizerApp:
             if session_log is not None:
                 session_log.write_records(records)
             self._append_serial_records(records)
+        update_serial_diagnostics = getattr(self, "_update_serial_diagnostics", None)
+        if callable(update_serial_diagnostics):
+            update_serial_diagnostics()
+        maybe_write_serial_diagnostics = getattr(self, "_maybe_write_serial_diagnostics", None)
+        if callable(maybe_write_serial_diagnostics):
+            maybe_write_serial_diagnostics()
         for record in records:
             if record.direction == "error":
                 self._handle_serial_error(record)
@@ -1905,6 +1942,34 @@ class SerialEventLiveVisualizerApp:
             self.board_link_health_state = "stale"
             self._write_session_note(f"板端状态日志超时: {age_s:.1f}s 无 FALL 帧")
         self.serial_status_var.set(f"板端状态超时：{age_s:.1f}s 无 FALL 帧")
+
+    def _update_serial_diagnostics(self) -> None:
+        reader = getattr(self, "serial_reader", None)
+        diagnostics_var = getattr(self, "serial_diagnostics_var", None)
+        if reader is None or diagnostics_var is None:
+            return
+        try:
+            diagnostics = reader.diagnostics
+        except AttributeError:
+            return
+        diagnostics_var.set(serial_diagnostics_text(diagnostics))
+
+    def _maybe_write_serial_diagnostics(self, *, force: bool = False) -> None:
+        if getattr(self, "_closed", False) or getattr(self, "source_mode", None) != "device":
+            return
+        reader = getattr(self, "serial_reader", None)
+        if reader is None or not getattr(reader, "is_connected", False):
+            return
+        write_note = getattr(self, "_write_session_note", None)
+        if write_note is None:
+            return
+
+        now = time.monotonic()
+        last_at = getattr(self, "_last_serial_diagnostics_at_monotonic", None)
+        if not force and (last_at is None or now - last_at < SERIAL_DIAGNOSTIC_INTERVAL_S):
+            return
+        write_note(serial_diagnostics_text(reader.diagnostics))
+        self._last_serial_diagnostics_at_monotonic = now
 
     def _handle_serial_error(self, record: SerialRecord) -> None:
         self.board_link_health_state = "error"

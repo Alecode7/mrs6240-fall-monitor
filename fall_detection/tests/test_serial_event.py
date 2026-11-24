@@ -167,6 +167,41 @@ class SerialReaderBoundaryTests(unittest.TestCase):
         self.assertEqual(record.status.frame_index, 2610)
         self.assertEqual(record.status.z_cm, 155)
 
+    def test_reader_diagnostics_classify_status_event_other_and_decode_loss(self):
+        class FakeSerial:
+            def __init__(self, **_kwargs):
+                self.is_open = True
+                self.lines = [
+                    b"FALL frame=10 state=0 target=0\r\n",
+                    b"FALL_EVENT state=confirmed frame=11\r\n",
+                    b"Welcome to use POSSUMIC\r\n",
+                    b"\xff\xfe\r\n",
+                ]
+
+            def readline(self):
+                if self.lines:
+                    return self.lines.pop(0)
+                return b""
+
+            def close(self):
+                self.is_open = False
+
+        records = Queue()
+        reader = SerialLogReader(records, serial_factory=lambda **kwargs: FakeSerial())
+        reader.connect("COM12", 115200)
+        received = [records.get(timeout=1.0) for _ in range(4)]
+        reader.stop()
+
+        self.assertEqual([record.direction for record in received], ["rx"] * 4)
+        diagnostics = reader.diagnostics
+        self.assertEqual(diagnostics.received_lines, 4)
+        self.assertEqual(diagnostics.status_frames, 1)
+        self.assertEqual(diagnostics.fall_events, 1)
+        self.assertEqual(diagnostics.other_lines, 2)
+        self.assertEqual(diagnostics.decode_replacement_lines, 1)
+        self.assertEqual(diagnostics.status_ratio, 0.25)
+        self.assertIsNotNone(diagnostics.last_line_at)
+
     def test_reader_releases_port_after_read_error(self):
         class FakeSerial:
             def __init__(self, **_kwargs):

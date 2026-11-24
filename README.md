@@ -38,7 +38,7 @@
 
 核心原则：**“是否跌倒”以板端串口输出的 `FALL_EVENT` 为准**。PC 端显示的点云、目标框和折线图用于观测、排障、留证，不会覆盖板端判断结果。
 
-核心算法说明见 [docs/ALGORITHM.md](docs/ALGORITHM.md)。其中明确列出了点云处理链路、候选/疑似/确认/恢复状态机，以及当前工程的关键阈值和适用边界。
+核心算法说明见 [docs/ALGORITHM.md](docs/ALGORITHM.md)。其中明确列出了点云处理链路、候选/疑似/确认/恢复状态机，以及当前工程的关键阈值和适用边界。M7605 参考项目的可借鉴结论与吸收边界见 [docs/M7605_REFERENCE_TAKEAWAYS.md](docs/M7605_REFERENCE_TAKEAWAYS.md)。
 
 ## 2. 当前运行基线
 
@@ -362,6 +362,7 @@ FALL_EVENT state=recovered frame=... t=... drop_cm=... z=... reason=...
 - 串口与 SPI/HIF 一键直连，串口断开后自动重连。
 - 连续 3 秒没有新的点云帧时提示数据超时，并尝试重新建立点云连接。
 - 显示板端状态帧频率、`overflow`、控制口和数据口连接状态。
+- 工程界面显示控制串口解析诊断，包括 RX、`FALL`、`FALL_EVENT`、其他行、解码异常和状态帧占比；连接期间每 10 秒写入一次会话日志。
 - 顶部“部署自检”会汇总控制串口、点云、板端 `FALL` 状态帧、`overflow` 增长和 `FALL_CFG` 配置回显，输出“可监护”“配置待核验/不一致”或“数据异常”。控制串口连接后会自动发送 `fall_config`，无需依赖一次性的启动日志。
 - 显示板端目标与点云的关联偏差；关联显示只用于诊断，不修改板端跟踪。
 - 根据 `FALL_EVENT` 更新正常/疑似/确认/恢复状态；确认报警在恢复事件前保持。
@@ -487,7 +488,7 @@ D:\Anaconda\anaconda\python.exe -m pytest -q `
   fall_detection\tests\test_serial_event_live_visualizer.py
 ```
 
-已验证的实时协议与监护界面测试为 `42 passed`。本项目的实时告警依据始终是板端 `FALL_EVENT`，不要把点云展示或历史离线数据问题误判为板端状态机失效。
+已验证的实时协议与监护界面测试为 `47 passed`。本项目的实时告警依据始终是板端 `FALL_EVENT`，不要把点云展示或历史离线数据问题误判为板端状态机失效。
 
 建议把每次物理测试按下表记录：
 
